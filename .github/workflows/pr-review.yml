@@ -1,0 +1,43 @@
+name: PR Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch agent source
+        env:
+          AGENT_URL: "https://github.com/Adityan-78/pr-review-agent-supreme.git.git"
+          AGENT_PAT: ${{ secrets.AGENT_PAT }}
+        run: |
+          URL="${AGENT_URL}"
+          if [ -n "$AGENT_PAT" ]; then
+            URL="${URL/https:\/\//https:\/\/$AGENT_PAT@}"
+          fi
+          git clone --depth 1 "$URL" agent_src
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/agent_src" >> $GITHUB_ENV
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r agent_src/requirements.txt
+          pip install flake8 bandit pyyaml
+
+      - name: Run agent on this PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # optional, for AI suggestions in CI
+        run: |
+          python -m agent.cli analyze --provider github --repo "${{ github.repository }}" --pr "${{ github.event.pull_request.number }}"
